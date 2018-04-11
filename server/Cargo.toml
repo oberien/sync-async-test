@@ -1,0 +1,15 @@
+[package]
+name = "server"
+version = "0.1.0"
+authors = ["jarofietz <jaro.fietz@uniscon.de>"]
+
+[features]
+sync = []
+async = []
+tcp = []
+udp = []
+
+[dependencies]
+tokio = "0.1.5"
+tokio-core = "0.1.16"
+futures = "0.1.20"
