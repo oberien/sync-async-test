@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = ["jarofietz <jaro.fietz@uniscon.de>"]
 
 [features]
-sync = []
-async = []
+tcp = []
+udp = []
 
 [dependencies]
+net2 = "0.2.32"

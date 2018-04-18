@@ -11,17 +11,19 @@ fn main() {
     use std::net::TcpListener;
     use std::io::Read;
 
-    let listen = TcpListener::bind("localhost:1337").unwrap();
-    let (mut con, _) = listen.accept().unwrap();
-    let mut buf = [0u8; 8192];
-    let mut size = 0;
-    while let Ok(len) = con.read(&mut buf) {
-        if len == 0 {
-            break;
+    loop {
+        let listen = TcpListener::bind("localhost:1337").unwrap();
+        let (mut con, _) = listen.accept().unwrap();
+        let mut buf = [0u8; 8192];
+        let mut size = 0;
+        while let Ok(len) = con.read(&mut buf) {
+            if len == 0 {
+                break;
+            }
+            size += len;
         }
-        size += len;
+        println!("size: {}", size);
     }
-    println!("size: {}", size);
 }
 
 #[cfg(all(feature = "async", feature = "tcp"))]
@@ -29,7 +31,7 @@ fn main() {
     use tokio::net::{TcpListener, TcpStream};
     use tokio::io::AsyncRead;
     use futures::{Future, Poll, Async, Stream};
-    use std::io;
+    use std::io::{self, Read};
 
     struct Server {
         socket: TcpStream,
@@ -42,22 +44,21 @@ fn main() {
         type Error = io::Error;
 
         fn poll(&mut self) -> Poll<usize, io::Error> {
-            println!("poll");
-            let res = try_nb!(self.socket.read(&mut self.buf);
-            self.buf.clear();
-            match res {
-                Ok(Async::NotReady) => {
-                    println!("not ready");
-                    Ok(Async::NotReady)
-                },
-                Ok(Async::Ready(len)) => {
-                    self.size += len;
-                    println!("ready: {}", len);
-                    Ok(Async::NotReady)
-                }
-                Err(e) => {
-                    println!("err: {:?}", e);
-                    Err(e)
+            loop {
+                let res = self.socket.read(&mut self.buf);
+                match res {
+                    Ok(0) => {
+                        return Ok(Async::Ready(self.size));
+                    }
+                    Ok(len) => {
+                        self.size += len;
+                    }
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        return Ok(Async::NotReady);
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -66,15 +67,13 @@ fn main() {
     let listener = TcpListener::bind(&"127.0.0.1:1337".parse().unwrap()).unwrap();
 
     let server = listener.incoming()
-        .and_then(|socket| Server {
-            socket,
-            buf: vec![0; 8192],
-            size: 0
-        }).map_err(|e| eprintln!("err {:?}", e))
-        .for_each(|size| {
-            println!("{}", size);
-            futures::empty()
-        });
+        .for_each(|socket| {
+            Server {
+                socket,
+                buf: vec![0; 8192],
+                size: 0
+            }.map(|size| println!("size: {}", size))
+        }).map_err(|e| eprintln!("err {:?}", e));
 
     // Start the Tokio runtime
     tokio::run(server);
@@ -84,13 +83,15 @@ fn main() {
 fn main() {
     use std::net::UdpSocket;
 
-    let s = UdpSocket::bind("127.0.0.1:1337").unwrap();
-    let mut buf = [0u8; 8192];
-    let mut size = 0;
-    while let Ok((len, _)) = s.recv_from(&mut buf) {
-        size += len;
+    loop {
+        let s = UdpSocket::bind("127.0.0.1:1337").unwrap();
+        let mut buf = [0u8; 8192];
+        let mut size = 0;
+        while let Ok((len, _)) = s.recv_from(&mut buf) {
+            size += len;
+        }
+        println!("{}", size);
     }
-    println!("{}", size);
 }
 
 #[cfg(all(feature = "async", feature = "udp"))]
@@ -107,7 +108,7 @@ fn main() {
         size: usize,
     }
 
-    impl Future for &mut Server {
+    impl<'a> Future for &'a mut Server {
         type Item = ();
         type Error = io::Error;
 
